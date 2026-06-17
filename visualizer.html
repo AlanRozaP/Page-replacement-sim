@@ -169,6 +169,172 @@
       multitasking: [1, 2, 3, 4, 5, 1, 6, 2, 7, 3, 8, 4, 9, 5, 10],
     };
 
+    // Algorithm classes
+    class PageReplacementAlgorithm {
+      constructor(frames) {
+        this.frames = frames;
+        this.pageFaults = 0;
+        this.hits = 0;
+        this.history = []; // { access, hit, memory, evicted, extra }
+      }
+      hitRate() {
+        const total = this.hits + this.pageFaults;
+        return total ? this.hits / total : 0;
+      }
+    }
+
+    class FIFO extends PageReplacementAlgorithm {
+      constructor(frames) {
+        super(frames);
+        this.memory = [];
+        this.memorySet = new Set();
+      }
+      access(page) {
+        let hit = true;
+        let evicted = null;
+        if (this.memorySet.has(page)) {
+          this.hits++;
+        } else {
+          this.pageFaults++;
+          hit = false;
+          if (this.memory.length < this.frames) {
+            this.memory.push(page);
+            this.memorySet.add(page);
+          } else {
+            evicted = this.memory.shift();
+            this.memorySet.delete(evicted);
+            this.memory.push(page);
+            this.memorySet.add(page);
+          }
+        }
+        this.history.push({ access: page, hit, memory: [...this.memory], evicted, extra: null });
+        return hit;
+      }
+    }
+
+    class LRU extends PageReplacementAlgorithm {
+      constructor(frames) {
+        super(frames);
+        this.memory = [];
+        this.memorySet = new Set();
+      }
+      access(page) {
+        let hit = true;
+        let evicted = null;
+        if (this.memorySet.has(page)) {
+          this.hits++;
+          this.memory.splice(this.memory.indexOf(page), 1);
+          this.memory.push(page);
+        } else {
+          this.pageFaults++;
+          hit = false;
+          if (this.memory.length < this.frames) {
+            this.memory.push(page);
+            this.memorySet.add(page);
+          } else {
+            evicted = this.memory.shift();
+            this.memorySet.delete(evicted);
+            this.memory.push(page);
+            this.memorySet.add(page);
+          }
+        }
+        this.history.push({ access: page, hit, memory: [...this.memory], evicted, extra: null });
+        return hit;
+      }
+    }
+
+    class Optimal extends PageReplacementAlgorithm {
+      constructor(frames, referenceString) {
+        super(frames);
+        this.referenceString = referenceString;
+        this.currentIndex = 0;
+        this.memory = [];
+        this.memorySet = new Set();
+      }
+      access(page) {
+        let hit = true;
+        let evicted = null;
+        if (this.memorySet.has(page)) {
+          this.hits++;
+        } else {
+          this.pageFaults++;
+          hit = false;
+          if (this.memory.length < this.frames) {
+            this.memory.push(page);
+            this.memorySet.add(page);
+          } else {
+            let farthest = -1;
+            let evictIdx = 0;
+            for (let i = 0; i < this.memory.length; i++) {
+              const nextUse = this.referenceString.indexOf(this.memory[i], this.currentIndex + 1);
+              const distance = nextUse === -1 ? Infinity : nextUse;
+              if (distance > farthest) {
+                farthest = distance;
+                evictIdx = i;
+              }
+            }
+            evicted = this.memory.splice(evictIdx, 1)[0];
+            this.memorySet.delete(evicted);
+            this.memory.push(page);
+            this.memorySet.add(page);
+          }
+        }
+        this.currentIndex++;
+        this.history.push({ access: page, hit, memory: [...this.memory], evicted, extra: null });
+        return hit;
+      }
+    }
+
+    class Clock extends PageReplacementAlgorithm {
+      constructor(frames) {
+        super(frames);
+        this.memory = [];
+        this.referenceBits = [];
+        this.memorySet = new Set();
+        this.hand = 0;
+      }
+      access(page) {
+        let hit = true;
+        let evicted = null;
+        if (this.memorySet.has(page)) {
+          this.hits++;
+          const idx = this.memory.indexOf(page);
+          this.referenceBits[idx] = 1;
+        } else {
+          this.pageFaults++;
+          hit = false;
+          if (this.memory.length < this.frames) {
+            this.memory.push(page);
+            this.referenceBits.push(0);
+            this.memorySet.add(page);
+          } else {
+            while (true) {
+              if (this.referenceBits[this.hand] === 0) {
+                evicted = this.memory[this.hand];
+                this.memorySet.delete(evicted);
+                this.memory[this.hand] = page;
+                this.referenceBits[this.hand] = 1;
+                this.memorySet.add(page);
+                this.hand = (this.hand + 1) % this.frames;
+                break;
+              } else {
+                this.referenceBits[this.hand] = 0;
+                this.hand = (this.hand + 1) % this.frames;
+              }
+            }
+          }
+        }
+        this.history.push({
+          access: page,
+          hit,
+          memory: [...this.memory],
+          evicted,
+          extra: { referenceBits: [...this.referenceBits], hand: this.hand },
+        });
+        return hit;
+      }
+    }
+
     // Input handling
     const sourceSelect = document.getElementById('input-source');
 
