@@ -125,6 +125,10 @@
       flex-wrap: wrap;
       gap: 0.5rem;
     }
+
+    .chart { margin-bottom: 1rem; }
+    .chart svg { width: 100%; height: auto; }
+    .chart h3 { margin: 0.5rem 0; color: var(--muted); font-size: 0.9rem; }
   </style>
 </head>
 <body>
@@ -206,7 +210,11 @@
         <!-- memory frames generated here -->
       </div>
     </section>
-    <section id="charts">...</section>
+    <section id="charts">
+      <h2>Comparison</h2>
+      <div id="chart-faults" class="chart"></div>
+      <div id="chart-hitrate" class="chart"></div>
+    </section>
   </main>
 
   <script>
@@ -579,11 +587,49 @@
       `;
     }
 
+    function renderBarChart(containerId, results, key, label, color) {
+      const container = document.getElementById(containerId);
+      const width = container.clientWidth || 600;
+      const height = 200;
+      const margin = { top: 20, right: 20, bottom: 40, left: 50 };
+      const chartW = width - margin.left - margin.right;
+      const chartH = height - margin.top - margin.bottom;
+      const max = Math.max(...results.map(r => r[key])) || 1;
+
+      const bars = results.map((r, i) => {
+        const barH = (r[key] / max) * chartH;
+        const x = (i * (chartW / results.length)) + (chartW / results.length) * 0.15;
+        const w = (chartW / results.length) * 0.7;
+        const y = chartH - barH;
+        return `
+          <rect x="${x}" y="${y}" width="${w}" height="${barH}" fill="${color}" rx="4" />
+          <text x="${x + w/2}" y="${y - 6}" text-anchor="middle" fill="var(--text)" font-size="12">${r[key]}</text>
+          <text x="${x + w/2}" y="${chartH + 18}" text-anchor="middle" fill="var(--muted)" font-size="12">${r.name}</text>
+        `;
+      }).join('');
+
+      container.innerHTML = `
+        <h3>${label}</h3>
+        <svg viewBox="0 0 ${width} ${height}" preserveAspectRatio="xMidYMid meet">
+          <g transform="translate(${margin.left},${margin.top})">
+            ${bars}
+            <line x1="0" y1="${chartH}" x2="${chartW}" y2="${chartH}" stroke="var(--panel-border)" />
+          </g>
+        </svg>
+      `;
+    }
+
+    function renderCharts(results) {
+      renderBarChart('chart-faults', results, 'faults', 'Page Faults', 'var(--fault)');
+      renderBarChart('chart-hitrate', results, 'hitRate', 'Hit Rate', 'var(--hit)');
+    }
+
     document.getElementById('run').addEventListener('click', () => {
       const { frames, refs } = gatherInput();
       currentReferenceString = refs;
       currentResults = runAll(frames, refs);
       renderSummary(currentResults);
+      renderCharts(currentResults);
       setPlaybackEnabled(true);
       resetPlayback();
     });
