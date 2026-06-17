@@ -366,9 +366,60 @@
       return { frames, refs };
     }
 
+    let currentResults = null;
+    let currentReferenceString = [];
+
+    function runAll(frames, referenceString) {
+      const algos = [
+        new FIFO(frames),
+        new LRU(frames),
+        new Optimal(frames, referenceString),
+        new Clock(frames),
+      ];
+      for (const algo of algos) {
+        for (const page of referenceString) {
+          algo.access(page);
+        }
+      }
+      return algos.map(algo => ({
+        name: algo.constructor.name,
+        faults: algo.pageFaults,
+        hits: algo.hits,
+        hitRate: algo.hitRate(),
+        history: algo.history,
+      }));
+    }
+
+    function createSummaryContainer() {
+      const el = document.createElement('section');
+      el.id = 'summary';
+      document.querySelector('main').appendChild(el);
+      return el;
+    }
+
+    function renderSummary(results) {
+      const container = document.getElementById('summary') || createSummaryContainer();
+      const rows = results.map(r => `
+        <tr>
+          <td>${r.name}</td>
+          <td>${r.faults}</td>
+          <td>${r.hits}</td>
+          <td>${(r.hitRate * 100).toFixed(2)}%</td>
+        </tr>
+      `).join('');
+      container.innerHTML = `
+        <table class="summary-table">
+          <thead><tr><th>Algorithm</th><th>Faults</th><th>Hits</th><th>Hit Rate</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
     document.getElementById('run').addEventListener('click', () => {
-      const input = gatherInput();
-      console.log('Run clicked', input);
+      const { frames, refs } = gatherInput();
+      currentReferenceString = refs;
+      currentResults = runAll(frames, refs);
+      renderSummary(currentResults);
     });
   </script>
 </body>
