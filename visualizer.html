@@ -82,14 +82,128 @@
   </header>
 
   <main>
-    <section id="input-panel">...</section>
+    <section id="input-panel">
+      <h2>Workload</h2>
+      <label>
+        Frames:
+        <input type="number" id="frames" value="3" min="1" max="32" />
+      </label>
+
+      <label>
+        Input source:
+        <select id="input-source">
+          <option value="custom">Custom reference string</option>
+          <option value="scenario">Preset scenario</option>
+          <option value="random">Random workload</option>
+        </select>
+      </label>
+
+      <div id="custom-input">
+        <label>
+          Reference string (space-separated integers):
+          <input type="text" id="refs" value="1 2 3 4 1 2 5 1 2 3 4 5" />
+        </label>
+      </div>
+
+      <div id="scenario-input" class="hidden">
+        <label>
+          Scenario:
+          <select id="scenario">
+            <option value="default">Default</option>
+            <option value="social_media">Social Media</option>
+            <option value="gaming">Gaming</option>
+            <option value="multitasking">Multitasking</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="random-input" class="hidden">
+        <label>Length: <input type="number" id="length" value="50" min="1" max="500" /></label>
+        <label>Pages: <input type="number" id="pages" value="10" min="1" max="100" /></label>
+        <label>Locality: <input type="number" id="locality" value="0.8" min="0" max="1" step="0.05" /></label>
+        <label>Seed: <input type="number" id="seed" value="123" min="0" /></label>
+      </div>
+
+      <button id="run">Run Simulation</button>
+    </section>
     <section id="playback">...</section>
     <section id="visualization">...</section>
     <section id="charts">...</section>
   </main>
 
   <script>
-    // Tasks 3-10 fill this
+    // Workload generator helpers
+    function mulberry32(a) {
+      return function() {
+        let t = a += 0x6D2B79F5;
+        t = Math.imul(t ^ (t >>> 15), t | 1);
+        t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+      };
+    }
+
+    function shuffle(array, rng) {
+      for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(rng() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+
+    function generateWorkload(length, numPages, locality, seed) {
+      const rng = seed != null ? mulberry32(seed) : Math.random;
+      const workingSetSize = Math.max(1, Math.floor(numPages * (1 - locality) + 3));
+      const allPages = Array.from({ length: numPages }, (_, i) => i + 1);
+      shuffle(allPages, rng);
+      const workingSet = allPages.slice(0, workingSetSize);
+      const refs = [];
+      for (let i = 0; i < length; i++) {
+        refs.push(rng() < locality ? workingSet[Math.floor(rng() * workingSet.length)] : Math.floor(rng() * numPages) + 1);
+      }
+      return refs;
+    }
+
+    const SCENARIOS = {
+      default: [1, 2, 3, 4, 1, 2, 5, 1, 2, 3, 4, 5],
+      social_media: [1, 1, 2, 1, 3, 2, 1, 4, 1, 2, 3, 1, 5, 1],
+      gaming: [1, 2, 3, 4, 5, 6, 1, 2, 3, 4, 5, 6, 7, 1, 2],
+      multitasking: [1, 2, 3, 4, 5, 1, 6, 2, 7, 3, 8, 4, 9, 5, 10],
+    };
+
+    // Input handling
+    const sourceSelect = document.getElementById('input-source');
+
+    function updateInputVisibility() {
+      document.getElementById('custom-input').classList.toggle('hidden', sourceSelect.value !== 'custom');
+      document.getElementById('scenario-input').classList.toggle('hidden', sourceSelect.value !== 'scenario');
+      document.getElementById('random-input').classList.toggle('hidden', sourceSelect.value !== 'random');
+    }
+
+    sourceSelect.addEventListener('change', updateInputVisibility);
+    updateInputVisibility();
+
+    function gatherInput() {
+      const frames = parseInt(document.getElementById('frames').value, 10);
+      const source = sourceSelect.value;
+      let refs;
+      if (source === 'custom') {
+        const raw = document.getElementById('refs').value.trim();
+        refs = raw.split(/\s+/).map(Number).filter(n => !isNaN(n));
+      } else if (source === 'scenario') {
+        refs = [...SCENARIOS[document.getElementById('scenario').value]];
+      } else {
+        const length = parseInt(document.getElementById('length').value, 10);
+        const pages = parseInt(document.getElementById('pages').value, 10);
+        const locality = parseFloat(document.getElementById('locality').value);
+        const seed = parseInt(document.getElementById('seed').value, 10);
+        refs = generateWorkload(length, pages, locality, seed);
+      }
+      return { frames, refs };
+    }
+
+    document.getElementById('run').addEventListener('click', () => {
+      const input = gatherInput();
+      console.log('Run clicked', input);
+    });
   </script>
 </body>
 </html>
