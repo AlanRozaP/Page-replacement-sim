@@ -73,6 +73,58 @@
     }
 
     .hidden { display: none; }
+
+    #memory-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(60px, 1fr));
+      gap: 0.5rem;
+      margin-top: 1rem;
+    }
+
+    .frame {
+      aspect-ratio: 1;
+      background: var(--frame-bg);
+      border: 2px solid var(--frame-border);
+      border-radius: var(--radius);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      position: relative;
+    }
+
+    .frame.new { border-color: var(--fault); box-shadow: 0 0 8px var(--fault); }
+    .frame.hit { border-color: var(--hit); }
+
+    .bit { font-size: 0.6rem; color: var(--muted); }
+
+    #timeline { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.5rem; }
+
+    .access-btn {
+      width: 2rem;
+      background: var(--frame-bg);
+      color: var(--text);
+    }
+
+    .access-btn.active { outline: 2px solid var(--accent); }
+    .access-btn.hit { border-color: var(--hit); }
+    .access-btn.fault { border-color: var(--fault); }
+
+    #playback {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    #viz-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
   </style>
 </head>
 <body>
@@ -126,8 +178,34 @@
 
       <button id="run">Run Simulation</button>
     </section>
-    <section id="playback">...</section>
-    <section id="visualization">...</section>
+    <section id="playback">
+      <button id="btn-first">⏮</button>
+      <button id="btn-prev">◀</button>
+      <button id="btn-play">▶</button>
+      <button id="btn-next">▶</button>
+      <button id="btn-last">⏭</button>
+      <label>Speed: <input type="range" id="speed" min="100" max="1500" value="500" /></label>
+    </section>
+    <section id="visualization">
+      <div id="viz-header">
+        <label>
+          Viewing:
+          <select id="view-algo">
+            <option value="FIFO">FIFO</option>
+            <option value="LRU">LRU</option>
+            <option value="Optimal">Optimal</option>
+            <option value="Clock">Clock</option>
+          </select>
+        </label>
+        <span id="step-info">Step 0 / 0</span>
+      </div>
+      <div id="timeline">
+        <!-- access buttons generated here -->
+      </div>
+      <div id="memory-grid">
+        <!-- memory frames generated here -->
+      </div>
+    </section>
     <section id="charts">...</section>
   </main>
 
@@ -368,6 +446,92 @@
 
     let currentResults = null;
     let currentReferenceString = [];
+    let currentAlgoIndex = 0;
+    let currentStep = 0;
+    let playbackTimer = null;
+
+    function renderViz() {
+      if (!currentResults) return;
+      const algo = currentResults[currentAlgoIndex];
+      const step = algo.history[currentStep];
+      const frames = parseInt(document.getElementById('frames').value, 10);
+
+      document.getElementById('step-info').textContent =
+        `Step ${currentStep + 1} / ${algo.history.length} — ${step.hit ? 'HIT' : 'FAULT'}`;
+
+      const timeline = document.getElementById('timeline');
+      timeline.innerHTML = currentReferenceString.map((p, i) => {
+        const h = algo.history[i];
+        return `<button class="access-btn ${i === currentStep ? 'active' : ''} ${h.hit ? 'hit' : 'fault'}"
+            data-index="${i}">${p}</button>`;
+      }).join('');
+
+      const grid = document.getElementById('memory-grid');
+      grid.innerHTML = '';
+      for (let i = 0; i < frames; i++) {
+        const page = step.memory[i];
+        const isNew = page === step.access && !step.hit;
+        const cell = document.createElement('div');
+        cell.className = `frame ${isNew ? 'new' : ''} ${step.hit ? 'hit' : ''}`;
+        cell.innerHTML = `<span>${page ?? ''}</span>`;
+        if (algo.name === 'Clock' && step.extra && page != null) {
+          const idx = step.memory.indexOf(page);
+          cell.innerHTML += `<span class="bit">R:${step.extra.referenceBits[idx]}</span>`;
+        }
+        grid.appendChild(cell);
+      }
+    }
+
+    function stopPlayback() {
+      if (playbackTimer) { clearInterval(playbackTimer); playbackTimer = null; }
+      document.getElementById('btn-play').textContent = '▶';
+    }
+
+    function resetPlayback() {
+      currentStep = 0;
+      stopPlayback();
+      renderViz();
+    }
+
+    function setPlaybackEnabled(enabled) {
+      ['btn-first', 'btn-prev', 'btn-play', 'btn-next', 'btn-last', 'view-algo'].forEach(id => {
+        document.getElementById(id).disabled = !enabled;
+      });
+    }
+
+    setPlaybackEnabled(false);
+
+    document.getElementById('view-algo').addEventListener('change', e => {
+      currentAlgoIndex = currentResults ? currentResults.findIndex(r => r.name === e.target.value) : 0;
+      resetPlayback();
+    });
+
+    document.getElementById('timeline').addEventListener('click', e => {
+      if (e.target.matches('.access-btn')) {
+        currentStep = parseInt(e.target.dataset.index, 10);
+        stopPlayback();
+        renderViz();
+      }
+    });
+
+    document.getElementById('btn-first').addEventListener('click', () => { currentStep = 0; stopPlayback(); renderViz(); });
+    document.getElementById('btn-prev').addEventListener('click', () => { currentStep = Math.max(0, currentStep - 1); stopPlayback(); renderViz(); });
+    document.getElementById('btn-next').addEventListener('click', () => { currentStep = Math.min(currentResults[currentAlgoIndex].history.length - 1, currentStep + 1); stopPlayback(); renderViz(); });
+    document.getElementById('btn-last').addEventListener('click', () => { currentStep = currentResults[currentAlgoIndex].history.length - 1; stopPlayback(); renderViz(); });
+
+    document.getElementById('btn-play').addEventListener('click', () => {
+      if (playbackTimer) { stopPlayback(); return; }
+      document.getElementById('btn-play').textContent = '⏸';
+      const speed = parseInt(document.getElementById('speed').value, 10);
+      playbackTimer = setInterval(() => {
+        if (currentStep >= currentResults[currentAlgoIndex].history.length - 1) {
+          stopPlayback();
+          return;
+        }
+        currentStep++;
+        renderViz();
+      }, speed);
+    });
 
     function runAll(frames, referenceString) {
       const algos = [
@@ -420,6 +584,8 @@
       currentReferenceString = refs;
       currentResults = runAll(frames, refs);
       renderSummary(currentResults);
+      setPlaybackEnabled(true);
+      resetPlayback();
     });
   </script>
 </body>
